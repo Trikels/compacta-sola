@@ -1,0 +1,1 @@
+{ "name": "compacta-sola", "license": "MIT", "version": "0.1.1", "description": "Reduce tokens: compacta entre turnos antes de que el contexto crezca y recorta salidas largas de Bash y PowerShell" }

@@ -1,0 +1,5 @@
+{
+  "name": "compacta-sola",
+  "owner": { "name": "compacta-sola contributors" },
+  "plugins": [{ "name": "compacta-sola", "source": "./" }]
+}
