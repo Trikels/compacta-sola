@@ -24,6 +24,8 @@ const INICIAL: Datos = { activo: true, umbral: UMBRAL_INICIAL, compactaciones: 0
 
 let suelo = 0
 let enCurso = false
+let pendiente = false
+let ultimoContexto = 0
 
 async function datos($: EngineInterface): Promise<Datos> {
   const guardado = (await $.store.get('datos')) as Partial<Datos> | undefined
@@ -53,16 +55,36 @@ function recortar(texto: string, ruta: string) {
   )
 }
 
+// El diagnóstico nunca debe romper la compactación.
+async function diagnostico($: EngineInterface, texto: string) {
+  try {
+    await $.store.set('diagnostico', texto)
+  } catch {}
+}
+
 async function compactar($: EngineInterface) {
-  if (enCurso) return
+  if (enCurso || !pendiente) return
   enCurso = true
   try {
-    await $.session.compact()
-  } catch {
-    // Empezó otro turno: se reintenta al acabar ese.
+    const r = await $.session.compact()
+    pendiente = false
+    await diagnostico($, r.skip === undefined ? 'última compactación: hecha' : `última compactación: saltada (${r.skip})`)
+  } catch (error) {
+    // En la app de escritorio la llamada directa no existe: compactar es la orden /compact.
+    try {
+      await $.command.run({ command: 'compact', args: '' })
+      pendiente = false
+      suelo = ultimoContexto
+      await diagnostico($, 'última compactación: pedida con /compact')
+    } catch (error2) {
+      // Sigue pendiente: se reintenta al enviar el siguiente mensaje o al acabar el turno.
+      await diagnostico($, `última compactación: rechazada (${String(error).slice(0, 120)} / ${String(error2).slice(0, 120)})`)
+    }
   } finally {
     enCurso = false
-    $.ui.status(undefined)
+    try {
+      $.ui.status(undefined)
+    } catch {}
   }
 }
 
@@ -78,13 +100,22 @@ export const register: Register = on => {
     if (e.agentId !== undefined || e.reason !== 'answer') return r
     const { activo, umbral } = await datos($)
     const { tokens } = (await $.session.usage()).context
+    await diagnostico($, `último turno: contexto ${tokens === undefined ? 'sin dato' : k(tokens)}`)
     if (activo && tokens !== undefined && tokens >= Math.max(umbral, suelo + CRECIMIENTO_MINIMO)) {
       $.ui.status(`compacta-sola: compactando ${k(tokens)}`)
+      pendiente = true
+      ultimoContexto = tokens
       // El turno aún se está cerrando: compactar dentro de este evento sería rechazado.
       $.clock.after(1500, () => void compactar($))
     }
     return r
   })
+
+  // Respaldo: si el temporizador no pudo compactar, se hace antes de atender el mensaje.
+  on('prompt.submit', async ($, e, next) => {
+    await compactar($)
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('session.compact', async ($, e, next) => {
     const instructions = [e.instructions, INSTRUCCIONES].filter(Boolean).join('\n\n')
@@ -149,7 +180,7 @@ export const register: Register = on => {
       text:
         `compacta-sola ${d.activo ? 'activo' : 'apagado'} · umbral ${k(d.umbral)} · ` +
         `${d.compactaciones} compactaciones · ${k(d.evitados)} tokens de contexto retirados · ` +
-        `${k(d.recortados)} caracteres recortados`,
+        `${k(d.recortados)} caracteres recortados · ${(await $.store.get('diagnostico')) ?? 'sin diagnóstico'}`,
     }
   })
 }

@@ -40,6 +40,7 @@ Funciona solo. Estas órdenes son opcionales:
 
 - Compactar pierde detalle: tras hacerlo, Claude trabaja con un resumen de lo anterior.
 - El mod no cambia el `autoCompactWindow` de Claude Code. Si lo tienes muy alto, el mod compacta antes igualmente mientras esté encendido.
+- En la app de escritorio, la compactación no se ve al terminar el turno: se hace al enviar tu siguiente mensaje, antes de que Claude lo atienda.
 
 ## Licencia
 

@@ -17,6 +17,7 @@ function base(on: On, tokens: number) {
     value: { startedAt: 0, rateLimits: [], context: { tokens, window: 1_000_000 } },
   }))
   on('turn.complete', () => ({ text: '' }))
+  on('ui.status', () => ({ value: undefined }) as never)
   on('env.get', () => ({ value: 'C:/Users/prueba' }))
 }
 
@@ -141,4 +142,21 @@ test('si no se puede guardar el archivo, no recorta', async ($, on) => {
   const larga = 'y'.repeat(20_000)
   await $.session.append(fila(larga))
   expect(guardada).toBe(larga)
+})
+
+test('si la llamada directa no existe, usa la orden /compact', async ($, on) => {
+  const ordenes: string[] = []
+  base(on, 200_000)
+  on('clock.after', () => ({ value: undefined }))
+  on('session.compact', () => {
+    throw new Error('not available in a headless session')
+  })
+  on('command.run', (_, e) => {
+    ordenes.push(e.command)
+    return { text: '' }
+  })
+  await arrancar($)
+  await $.turn.complete(turno)
+  for (let i = 0; i < 100 && ordenes.length === 0; i += 1) await $.turn.complete({ ...turno, reason: 'aborted', isAborted: true })
+  expect(ordenes).toEqual(['compact'])
 })
